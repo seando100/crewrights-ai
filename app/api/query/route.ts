@@ -7,7 +7,7 @@ function validateGroundedResponse(result: AmeliaResponse, matches: CBAChunk[]): 
     throw new Error("Ungrounded synthesis response");
   }
 
-  if (!Array.isArray(result.citations) || result.citations.length < 1) {
+  if (!Array.isArray(result.citations)) {
     throw new Error("Ungrounded synthesis response");
   }
 
@@ -60,14 +60,14 @@ export async function POST(req: NextRequest) {
       "2024-CBA_121724"
     );
 
-    if (!matches || matches.length === 0 || matches[0].similarity < 0.55) {
-      return NextResponse.json(
-        { error: "Question does not pertain to the contract." },
-        { status: 400 }
-      );
-    }
+    const lowConfidence =
+      !matches || matches.length === 0 || matches[0].similarity < 0.55;
 
-    const result = await synthesizeAnswer({ question, matches });
+    const result = await synthesizeAnswer({
+      question,
+      matches,
+      lowConfidence,
+    });
     validateGroundedResponse(result, matches);
     return NextResponse.json({ ...result, matches: undefined });
   } catch (err) {

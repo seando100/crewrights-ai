@@ -39,8 +39,9 @@ Output format:
 export async function synthesizeAnswer(args: {
   question: string;
   matches: CBAChunk[];
+  lowConfidence: boolean;
 }): Promise<AmeliaResponse> {
-  const { question, matches } = args;
+  const { question, matches, lowConfidence } = args;
 
   const chunks = matches
     .map(
@@ -49,7 +50,16 @@ export async function synthesizeAnswer(args: {
     )
     .join("\n\n---\n\n");
 
-  const userMessage = `Question: ${question}\n\nContract excerpts:\n\n${chunks}`;
+  const confidenceNote = lowConfidence
+    ? `\n\nIMPORTANT: The retrieved contract excerpts below have low relevance scores for this question. Before answering, determine which applies:
+1. PROCEDURAL / OFF-TOPIC: The question is not about the CBA (e.g., airline operations, company policy, personal matters). If so, set answer to a brief, polite redirect explaining Amelia only covers contract questions, set citations to [], and set clarification_needed to false.
+2. AMBIGUOUS: The question could relate to the contract but is unclear. If so, set clarification_needed to true and ask exactly 1 clarifying question. Do not fabricate citations.
+3. GROUNDED: The excerpts clearly address the question despite the low score. Answer normally with citations drawn only from the provided chunks.
+
+Never fabricate a section_number, section_title, or chunk_index not present in the excerpts.`
+    : "";
+
+  const userMessage = `Question: ${question}\n\nContract excerpts:\n\n${chunks}${confidenceNote}`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
