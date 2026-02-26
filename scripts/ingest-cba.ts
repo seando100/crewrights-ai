@@ -111,12 +111,10 @@ async function main() {
       continue;
     }
 
-    for (const line of text_content.split("\n")) {
-      const detected = detectSectionHeader(line.trim());
-      if (detected) {
-        currentSectionNumber = detected.section_number;
-        currentSectionTitle = detected.section_title;
-      }
+    const sectionMatch = text_content.match(/SECTION\s+(\d+)\s*[-–—]\s*([A-Z][A-Z\s(),/&–—-]*?)(?=\s+[A-Z]\.)/);
+    if (sectionMatch) {
+      currentSectionNumber = sectionMatch[1];
+      currentSectionTitle = sectionMatch[2].trim();
     }
 
     const embedding = await embed(text_content);
