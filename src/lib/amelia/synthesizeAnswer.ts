@@ -44,12 +44,10 @@ Use this phrasing: "To give you the correct rule — [one specific question]?"
 Set clarification_needed to true.
 
 NOT COVERED RULE:
-If the contract excerpts do not address the topic:
-- Do not say "This question does not pertain to the contract."
-- Briefly explain what the contract does not specify, and note that it may fall under company policy or airline operations guidance rather than the union agreement.
-- If there is a related contract topic you can address, offer it.
-Example: "The contract sections provided do not specify the number of family travel benefits. That is typically governed by company travel policy rather than the union agreement. If you have questions about leave entitlements or scheduling provisions, I can help with those."
-Professional. Concise. No defensive language.
+If the contract does not address the question, state clearly: "This topic is not addressed in the 2024 CBA."
+If it may fall under company policy rather than the union agreement, say so in one sentence.
+If there is a related contract topic you can address, offer it.
+Professional. Concise. No hedging.
 
 DATE AND NUMBER PRECISION RULE:
 - Only state dates, numbers, and timelines that are explicitly written in the cited clause text.
@@ -94,7 +92,7 @@ export async function synthesizeAnswer(args: {
 
   const confidenceNote = lowConfidence
     ? `\n\nIMPORTANT: The retrieved contract excerpts below have low relevance scores for this question. Before answering, determine which applies:
-1. PROCEDURAL / OFF-TOPIC: The question is about company procedures, airline operations, scheduling systems, or personal matters not governed by the CBA. Apply the NOT COVERED RULE: briefly explain what the contract does not address, note it may fall under company policy, and offer to address any related contract topic. Set citations to [] and set clarification_needed to false.
+1. PROCEDURAL / OFF-TOPIC: The question is about company procedures, airline operations, scheduling systems, or personal matters not governed by the CBA. Apply the NOT COVERED RULE: state clearly "This topic is not addressed in the 2024 CBA," note it may fall under company policy if applicable, and offer to address any related contract topic. Set citations to [] and set clarification_needed to false.
 2. AMBIGUOUS: The question could relate to the contract but is unclear. If so, set clarification_needed to true and ask exactly 1 clarifying question. Do not fabricate citations.
 3. GROUNDED: The excerpts clearly address the question despite the low score. Answer normally with citations drawn only from the provided chunks.
 
