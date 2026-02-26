@@ -9,8 +9,8 @@ export type Citation = {
 };
 
 export type AmeliaResponse = {
-  answer: string;
-  citations: Citation[];
+  answer?: string;
+  citations?: Citation[];
   clarification_needed?: boolean;
   clarifying_question?: string;
 };
@@ -24,16 +24,28 @@ Rules:
 - Answer in plain language a flight attendant can understand.
 - Provide 2–5 citations, preferring the highest similarity chunks.
 - Each citation must include section_number, section_title, chunk_index, and a short direct quote from the text.
-- If the question is vague or the answer depends on the flight attendant's situation (e.g., lineholder vs. reserve), ask exactly 1 clarifying question and set clarification_needed to true.
 - Output strict JSON only. No markdown, no extra keys.
 
-Output format:
+CONDITIONAL VARIABLE RULE (non-negotiable):
+If the correct answer depends on a variable the flight attendant has not specified — such as flight length, years of service, days of sick leave available, lineholder vs. reserve status, domestic vs. international pairing, or any other factor that changes the contract outcome — you MUST NOT answer. Instead:
+- Set clarification_needed to true
+- Provide exactly one concise clarifying_question targeting the missing variable
+- Omit answer and citations entirely
+Do not hedge or provide a partial answer. Do not include answer or citations when clarification_needed is true.
+
+Output format when answering:
 {
   "answer": "...",
   "citations": [
     { "section_number": "9", "section_title": "SICK LEAVE", "chunk_index": 40, "quote": "..." }
   ],
   "clarification_needed": false
+}
+
+Output format when clarification is needed:
+{
+  "clarification_needed": true,
+  "clarifying_question": "..."
 }`;
 
 export async function synthesizeAnswer(args: {

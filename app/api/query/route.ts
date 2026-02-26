@@ -3,6 +3,21 @@ import { queryCBA, CBAChunk } from "../../../src/lib/queryCBA";
 import { synthesizeAnswer, AmeliaResponse } from "../../../src/lib/amelia/synthesizeAnswer";
 
 function validateGroundedResponse(result: AmeliaResponse, matches: CBAChunk[]): void {
+  if (result.clarification_needed === true) {
+    // Clarification path: answer and citations must be absent
+    if (typeof result.clarifying_question !== "string" || result.clarifying_question.trim().length === 0) {
+      throw new Error("Invalid clarification structure");
+    }
+    if (result.answer !== undefined) {
+      throw new Error("Clarification answer contamination");
+    }
+    if (Array.isArray(result.citations) && result.citations.length > 0) {
+      throw new Error("Clarification citations contamination");
+    }
+    return;
+  }
+
+  // Answer path: answer and citations must be present and grounded
   if (typeof result.answer !== "string" || result.answer.trim() === "") {
     throw new Error("Ungrounded synthesis response");
   }
@@ -29,20 +44,10 @@ function validateGroundedResponse(result: AmeliaResponse, matches: CBAChunk[]): 
     if (citation.section_title !== chunk.metadata.section_title) {
       throw new Error("Citation section_title mismatch");
     }
-
   }
 
-  if (result.clarification_needed === true) {
-    if (
-      typeof result.clarifying_question !== "string" ||
-      result.clarifying_question.trim().length === 0
-    ) {
-      throw new Error("Invalid clarification structure");
-    }
-  } else {
-    if (result.clarifying_question !== undefined) {
-      throw new Error("Invalid clarification structure");
-    }
+  if (result.clarifying_question !== undefined) {
+    throw new Error("Invalid clarification structure");
   }
 }
 
@@ -79,6 +84,8 @@ export async function POST(req: NextRequest) {
       "Citation section_title mismatch",
       "Citation quote mismatch",
       "Invalid clarification structure",
+      "Clarification answer contamination",
+      "Clarification citations contamination",
     ];
     if (knownGuards.includes(msg)) {
       return NextResponse.json(
