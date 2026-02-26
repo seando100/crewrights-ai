@@ -9,19 +9,21 @@ export type RuleEvaluation =
 const EVALUATE_PROMPT = `You evaluate which specific contract rule applies to a flight attendant's situation.
 
 You receive:
-- Known variables already extracted from the question (numbers, categories)
+- Variables that the flight attendant has ALREADY stated (only what is known — no nulls, no unknowns)
 - Contract chunks retrieved for the relevant topic
 
 Your task:
 1. Read the chunks and identify the applicable threshold brackets or entitlement tiers.
-2. Determine if the known variables are sufficient to identify exactly which bracket applies.
-3. If YES: return the chunk_index of the most applicable clause.
-4. If NO (a critical variable is missing to resolve the bracket): return the single most important missing variable as a clarifying question using this format: "To give you the correct rule — [one specific question]?"
+2. Determine whether the STATED variables are sufficient to select one specific clause.
+3. If YES — the chunks clearly resolve to one applicable clause given the stated variables: return that chunk_index.
+4. If NO — a variable is EXPLICITLY required by the contract language in the chunks but was not stated: ask for ONLY that variable.
 
-Rules:
-- Do not guess or fill in missing variables.
-- Do not return a chunk_index if you cannot determine which bracket applies with confidence.
-- Only choose from the chunk_index values present in the provided chunks.
+CRITICAL CONSTRAINTS:
+- Only ask for a variable if it is EXPLICITLY mentioned in the retrieved contract text as a condition that changes the rule outcome.
+- If the chunks describe rules based on duty hours and flight type only, do NOT ask about service years, reserve/lineholder status, or any other variable not mentioned in the text.
+- Do not invent requirements. Read what the contract actually says.
+- Only choose chunk_index values that appear in the provided chunks.
+- If the stated variables are sufficient, resolve — do not ask unnecessary questions.
 
 Output strict JSON only:
 { "resolved": true, "chunk_index": 6 }
@@ -33,7 +35,13 @@ export async function evaluateRule(
   matches: CBAChunk[],
   question: string
 ): Promise<RuleEvaluation> {
-  const variableSummary = JSON.stringify(variables, null, 2);
+  // Only pass variables that are actually known — nulls confuse the model
+  // into treating them as "missing required inputs"
+  const knownEntries = Object.entries(variables).filter(([, v]) => v !== null);
+  const variableSummary =
+    knownEntries.length > 0
+      ? knownEntries.map(([k, v]) => `${k}: ${v}`).join("\n")
+      : "(no specific variables extracted from the question)";
 
   const chunks = matches
     .map(

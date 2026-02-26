@@ -129,12 +129,15 @@ export default function Home() {
         <div className="mx-auto max-w-xl px-4 min-h-full flex flex-col">
           {messages.length === 0 ? (
             <div className="flex-1 flex items-center justify-center">
-              <div className="text-center space-y-1.5">
-                <p className="text-zinc-500 text-sm">
-                  I&rsquo;m here to help interpret your union contract.
+              <div className="text-center space-y-2 max-w-xs">
+                <p className="text-zinc-400 text-sm font-medium">
+                  Hi, I&rsquo;m Amelia
                 </p>
-                <p className="text-zinc-600 text-xs">
-                  Ask about rest, vacation, pay rules, or other provisions.
+                <p className="text-zinc-500 text-sm">
+                  Your American Airlines Union Contract Advisor.
+                </p>
+                <p className="text-zinc-600 text-xs leading-5">
+                  Ask me anything about scheduling, rest, pay, vacation, or other contract provisions.
                 </p>
               </div>
             </div>

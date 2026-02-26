@@ -6,6 +6,23 @@ import { classifyQuestion } from "../../../src/lib/amelia/classifyQuestion";
 import { evaluateRule } from "../../../src/lib/amelia/evaluateRule";
 import { explainClause } from "../../../src/lib/amelia/explainClause";
 
+// For short follow-ups ("33", "reserve", "14 hours"), retrieval on the raw
+// message returns irrelevant chunks. Use the last substantial user turn from
+// history as the retrieval anchor so we stay on the right contract topic.
+function buildRetrievalQuery(
+  question: string,
+  history: { role: string; content: string }[]
+): string {
+  const words = question.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 3 && history.length > 0) {
+    const lastSubstantial = [...history]
+      .reverse()
+      .find((h) => h.role === "user" && h.content.trim().split(/\s+/).length > 3);
+    if (lastSubstantial) return lastSubstantial.content;
+  }
+  return question;
+}
+
 function validateGroundedResponse(result: AmeliaResponse, matches: CBAChunk[]): void {
   if (result.clarification_needed === true) {
     // Clarification path: answer and citations must be absent
@@ -74,7 +91,8 @@ export async function POST(req: NextRequest) {
 
     if (intent === "greeting") {
       return NextResponse.json({
-        answer: "Hi — I'm here to help with questions about your union contract. What would you like to know?",
+        answer:
+          "Hi, I'm Amelia — your American Airlines Union Contract Advisor. I help interpret the 2024 CBA in plain language and point you directly to the relevant sections. Ask me anything about scheduling, rest, pay, vacation, or other contract provisions.",
         citations: [],
         clarification_needed: false,
       });
@@ -99,9 +117,12 @@ export async function POST(req: NextRequest) {
     // ── Question classification + retrieval (parallel) ────────────────────
     // classifyQuestion extracts the question type, structured variables, and
     // a clean topic_query (no numbers). Both calls start at the same time.
+    // For short follow-ups, retrieval anchors on the last substantial user
+    // turn so "33" finds rest-period chunks, not nothing.
+    const retrievalQuery = buildRetrievalQuery(question, safeHistory);
     const [classification, rawMatches] = await Promise.all([
       classifyQuestion(question),
-      queryCBA(question, "American Airlines", "2024-CBA_121724"),
+      queryCBA(retrievalQuery, "American Airlines", "2024-CBA_121724"),
     ]);
 
     const isStructuredType =

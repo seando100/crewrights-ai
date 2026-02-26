@@ -95,14 +95,28 @@ function hasContractKeyword(q: string): boolean {
   return CONTRACT_KEYWORDS.some((kw) => q.includes(kw));
 }
 
+// Single-word greeting starters — used for "hello there", "hi amelia", "hey there", etc.
+const GREETING_STARTERS = new Set([
+  "hello", "hi", "hey", "howdy", "greetings", "hiya",
+]);
+
 export function classifyIntent(question: string): IntentType {
   // Normalize: lowercase, strip trailing punctuation
-  const q = question.trim().toLowerCase().replace(/[!?.,]+$/, "").trim();
+  const q = question.trim().toLowerCase().replace(/[!?.,!]+$/, "").trim();
 
   if (GREETINGS.has(q)) return "greeting";
   if (THANKS.has(q)) return "thanks";
 
   const words = q.split(/\s+/).filter(Boolean);
+
+  // "hello there", "hi amelia", "hey there how are you" — greeting starter + short social text
+  if (
+    words.length <= 5 &&
+    GREETING_STARTERS.has(words[0]) &&
+    !hasContractKeyword(q)
+  ) {
+    return "greeting";
+  }
 
   // Empty or pure punctuation
   if (words.length === 0 || /^[\s?!.,;:]+$/.test(question.trim())) {
