@@ -74,9 +74,10 @@ export async function POST(req: NextRequest) {
     validateGroundedResponse(result, matches);
     return NextResponse.json({ ...result, matches: undefined });
   } catch (err) {
-    if ((err as Error).message === "Ungrounded synthesis response") {
+    const msg = (err as Error).message;
+    if (msg === "Ungrounded synthesis response" || msg === "Invalid clarification structure") {
       return NextResponse.json(
-        { error: "Unable to generate contract-grounded answer." },
+        { error: "Unable to generate contract-grounded answer.", debug: msg },
         { status: 500 }
       );
     }
