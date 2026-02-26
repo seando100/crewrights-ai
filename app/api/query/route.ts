@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queryCBA, CBAChunk } from "../../../src/lib/queryCBA";
 import { synthesizeAnswer, AmeliaResponse } from "../../../src/lib/amelia/synthesizeAnswer";
+import { classifyIntent } from "../../../src/lib/amelia/classifyIntent";
 
 function validateGroundedResponse(result: AmeliaResponse, matches: CBAChunk[]): void {
   if (result.clarification_needed === true) {
@@ -57,6 +58,33 @@ export async function POST(req: NextRequest) {
 
     if (!question || typeof question !== "string") {
       return NextResponse.json({ error: "question is required" }, { status: 400 });
+    }
+
+    // Intent pre-classification — runs before retrieval, no LLM cost
+    const intent = classifyIntent(question);
+
+    if (intent === "greeting") {
+      return NextResponse.json({
+        answer: "Hi — I'm here to help with questions about your union contract. What would you like to know?",
+        citations: [],
+        clarification_needed: false,
+      });
+    }
+
+    if (intent === "thanks") {
+      return NextResponse.json({
+        answer: "You're welcome — let me know if you have any other questions about your contract.",
+        citations: [],
+        clarification_needed: false,
+      });
+    }
+
+    if (intent === "vague") {
+      return NextResponse.json({
+        answer: "Can you tell me a little more about what you're asking? I'm here to help with questions about your union contract.",
+        citations: [],
+        clarification_needed: false,
+      });
     }
 
     const safeHistory: { role: "user" | "assistant"; content: string }[] =
