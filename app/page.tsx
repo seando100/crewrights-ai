@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Citation = {
   section_number: string | null;
   section_title: string | null;
   chunk_index: number | null;
-  quote?: string;
 };
 
 type AmeliaResponse = {
@@ -15,52 +14,18 @@ type AmeliaResponse = {
   clarification_needed?: boolean;
   clarifying_question?: string;
   error?: string;
-  debug?: string;
 };
 
-function cn(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
-}
-
-function dedupeCitations(citations: Citation[]) {
-  const seen = new Set<string>();
-  const out: Citation[] = [];
-  for (const c of citations) {
-    const key = `${c.section_number ?? ""}|${c.section_title ?? ""}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(c);
-  }
-  return out;
-}
-
-const LOADING_LINES = [
-  "Scanning your contract language…",
-  "Finding the relevant section…",
-  "Cross checking provisions…",
-  "Translating contract terms into plain English…",
-];
+type QA = {
+  question: string;
+  response: AmeliaResponse;
+};
 
 export default function Home() {
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<AmeliaResponse | null>(null);
-  const [loadingLineIdx, setLoadingLineIdx] = useState(0);
-
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-
-  useEffect(() => {
-    if (!loading) return;
-    const t = setInterval(() => {
-      setLoadingLineIdx((i) => (i + 1) % LOADING_LINES.length);
-    }, 1200);
-    return () => clearInterval(t);
-  }, [loading]);
-
-  const sources = useMemo(() => {
-    if (!result?.citations || result.citations.length === 0) return [];
-    return dedupeCitations(result.citations);
-  }, [result?.citations]);
+  const [history, setHistory] = useState<QA[]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -68,8 +33,6 @@ export default function Home() {
     if (!q) return;
 
     setLoading(true);
-    setLoadingLineIdx(0);
-    setResult(null);
 
     try {
       const res = await fetch("/api/query", {
@@ -77,200 +40,130 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: q }),
       });
-      const data = (await res.json()) as AmeliaResponse;
-      setResult(data);
+
+      const data = await res.json();
+      setHistory((prev) => [...prev, { question: q, response: data }]);
+      setQuestion("");
+      setTimeout(() => {
+        containerRef.current?.scrollTo({
+          top: containerRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }, 100);
     } catch {
-      setResult({ error: "Network error. Please try again." });
+      setHistory((prev) => [
+        ...prev,
+        {
+          question: q,
+          response: { error: "Network error. Please try again." },
+        },
+      ]);
     } finally {
       setLoading(false);
     }
   }
 
-  function handleExample(example: string) {
-    setQuestion(example);
-    setResult(null);
-    requestAnimationFrame(() => textareaRef.current?.focus());
-  }
-
   return (
-    <main className="min-h-dvh bg-[#070A12] text-zinc-100">
-      <div className="mx-auto w-full max-w-xl px-4 pb-10 pt-8">
+    <main className="min-h-dvh bg-[#050914] text-zinc-100">
+      <div
+        ref={containerRef}
+        className="mx-auto w-full max-w-xl px-4 pb-28 pt-6"
+      >
         {/* Header */}
-        <header className="mb-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">Amelia</h1>
-              <p className="mt-1 text-sm text-zinc-400">
-                Contract Interpreter, answers grounded strictly in your CBA.
-              </p>
+        <header className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {/* Logo */}
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-black font-bold">
+              A
             </div>
 
-            <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300">
-              AA 2024 CBA
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight">
+                Amelia
+              </h1>
+              <p className="text-xs text-zinc-400">
+                Contract Interpreter
+              </p>
             </div>
           </div>
 
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-            <p className="text-sm leading-6 text-zinc-200">
-              Ask a question in plain language. Amelia will answer using only
-              the contract text and cite the relevant section.
-            </p>
-            <p className="mt-2 text-xs text-zinc-400">
-              Not legal advice. If the contract is ambiguous, Amelia will ask a
-              clarifying question or suggest contacting your union rep.
-            </p>
+          <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300">
+            American Airlines · 2024 CBA
           </div>
         </header>
 
-        {/* Input */}
-        <section className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <label className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-              Your question
-            </label>
-
-            <div className="relative">
-              <textarea
-                ref={textareaRef}
-                className={cn(
-                  "w-full resize-none rounded-xl border border-white/10 bg-[#0B1020] p-4 text-sm leading-6 text-zinc-100",
-                  "placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-white/20",
-                  "min-h-[120px]"
-                )}
-                placeholder="Example: How is sick leave accrued?"
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                disabled={loading}
-              />
-
-              <div className="pointer-events-none absolute inset-x-4 bottom-3 flex items-center justify-between text-[11px] text-zinc-500">
-                <span>{loading ? LOADING_LINES[loadingLineIdx] : " "}</span>
-                <span>{question.trim().length}/300</span>
+        {/* Chat History */}
+        <div className="space-y-6">
+          {history.map((item, idx) => (
+            <div key={idx} className="space-y-3">
+              {/* User Question */}
+              <div className="rounded-xl bg-white/5 p-3 text-sm text-zinc-300">
+                {item.question}
               </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={loading || !question.trim()}
-              className={cn(
-                "mt-1 inline-flex w-full items-center justify-center rounded-xl px-4 py-3 text-sm font-medium",
-                "bg-white text-[#070A12] hover:bg-zinc-100",
-                "disabled:opacity-40 disabled:hover:bg-white"
-              )}
-            >
-              {loading ? (
-                <span className="inline-flex items-center gap-2">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-[#070A12]" />
-                  Reviewing your contract…
-                </span>
-              ) : (
-                "Review My Contract"
-              )}
-            </button>
-
-            <div className="mt-1 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => handleExample("How is sick leave accrued?")}
-                className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300 hover:bg-white/10"
-                disabled={loading}
-              >
-                Sick leave accrual
-              </button>
-              <button
-                type="button"
-                onClick={() => handleExample("What is reserve and how does it work?")}
-                className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300 hover:bg-white/10"
-                disabled={loading}
-              >
-                Reserve rules
-              </button>
-              <button
-                type="button"
-                onClick={() => handleExample("What happens if I miss a trip?")}
-                className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300 hover:bg-white/10"
-                disabled={loading}
-              >
-                Missed trip
-              </button>
-            </div>
-          </form>
-        </section>
-
-        {/* Results */}
-        {result && (
-          <section className="mt-6 space-y-4">
-            {result.error && (
-              <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
-                <p className="text-sm text-red-200">{result.error}</p>
-                {result.debug && (
-                  <p className="mt-2 text-xs text-red-200/70">Debug: {result.debug}</p>
-                )}
-              </div>
-            )}
-
-            {result.answer && (
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                  Plain English answer
-                </h2>
-                <p className="mt-3 text-[15px] leading-7 text-zinc-100">
-                  {result.answer}
-                </p>
-              </div>
-            )}
-
-            {result.clarification_needed && result.clarifying_question && (
-              <div className="rounded-2xl border border-white/10 bg-[#0B1020] p-5">
-                <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                  Clarifying question
-                </h3>
-                <p className="mt-3 text-sm leading-6 text-zinc-200">
-                  {result.clarifying_question}
-                </p>
-                <p className="mt-2 text-xs text-zinc-500">
-                  Answer this in your own words, then ask again.
-                </p>
-              </div>
-            )}
-
-            {sources.length > 0 && (
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                  Contract sources
-                </h3>
-
-                <div className="mt-3 space-y-2">
-                  {sources.map((c, i) => (
-                    <div
-                      key={`${c.section_number ?? "x"}-${c.section_title ?? "y"}-${i}`}
-                      className="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-black/10 p-3"
-                    >
-                      <div>
-                        <p className="text-sm text-zinc-100">
-                          Section {c.section_number ?? "?"}
-                          <span className="text-zinc-400">, </span>
-                          <span className="text-zinc-200">{c.section_title ?? "UNKNOWN"}</span>
-                        </p>
-                        <p className="mt-1 text-xs text-zinc-500">
-                          Source is used to ground the answer to your contract.
-                        </p>
-                      </div>
-                      <div className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300">
-                        CBA
-                      </div>
-                    </div>
-                  ))}
+              {/* Response */}
+              {item.response.error ? (
+                <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-200">
+                  {item.response.error}
                 </div>
-              </div>
-            )}
-          </section>
-        )}
+              ) : (
+                <div className="rounded-xl border border-white/10 bg-[#0B1020] p-4 space-y-3">
+                  {item.response.answer && (
+                    <p className="text-[15px] leading-7 text-zinc-100">
+                      {item.response.answer}
+                    </p>
+                  )}
 
-        <footer className="mt-10 text-center text-xs text-zinc-600">
-          CrewRights AI MVP, contract grounded answers only.
-        </footer>
+                  {item.response.clarification_needed &&
+                    item.response.clarifying_question && (
+                      <p className="text-sm text-zinc-400 italic">
+                        {item.response.clarifying_question}
+                      </p>
+                    )}
+
+                  {item.response.citations && (
+                    <div className="pt-2 border-t border-white/10 text-xs text-zinc-500">
+                      {Array.from(
+                        new Set(
+                          item.response.citations.map(
+                            (c) =>
+                              `Section ${c.section_number} — ${c.section_title}`
+                          )
+                        )
+                      ).map((s, i) => (
+                        <div key={i}>{s}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
+
+      {/* Fixed Input Footer */}
+      <form
+        onSubmit={handleSubmit}
+        className="fixed bottom-0 left-0 right-0 border-t border-white/10 bg-[#050914] p-4"
+      >
+        <div className="mx-auto flex w-full max-w-xl gap-3">
+          <input
+            className="flex-1 rounded-xl border border-white/10 bg-[#0B1020] px-4 py-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-white/20"
+            placeholder="Ask about your contract…"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            disabled={loading}
+          />
+          <button
+            type="submit"
+            disabled={loading || !question.trim()}
+            className="rounded-xl bg-white px-4 py-3 text-sm font-medium text-black disabled:opacity-40"
+          >
+            {loading ? "…" : "Ask"}
+          </button>
+        </div>
+      </form>
     </main>
   );
 }
