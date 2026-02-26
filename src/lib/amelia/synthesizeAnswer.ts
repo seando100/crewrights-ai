@@ -1,4 +1,5 @@
 import { openai } from "../openai";
+import type { CBAChunk } from "../queryCBA";
 
 export type Citation = {
   section_number: string | null;
@@ -37,7 +38,7 @@ Output format:
 
 export async function synthesizeAnswer(args: {
   question: string;
-  matches: Array<{ text_content: string; metadata: Record<string, unknown>; similarity: number }>;
+  matches: CBAChunk[];
 }): Promise<AmeliaResponse> {
   const { question, matches } = args;
 
