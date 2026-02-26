@@ -13,25 +13,25 @@ function validateGroundedResponse(result: AmeliaResponse, matches: CBAChunk[]): 
 
   for (const citation of result.citations) {
     if (citation.chunk_index === null || citation.chunk_index === undefined) {
-      throw new Error("Ungrounded synthesis response");
+      throw new Error("Citation chunk_index not found");
     }
 
     const chunk = matches.find((m) => m.metadata.chunk_index === citation.chunk_index);
 
     if (!chunk) {
-      throw new Error("Ungrounded synthesis response");
+      throw new Error("Citation chunk_index not found");
     }
 
     if (citation.section_number !== chunk.metadata.section_number) {
-      throw new Error("Ungrounded synthesis response");
+      throw new Error("Citation section_number mismatch");
     }
 
     if (citation.section_title !== chunk.metadata.section_title) {
-      throw new Error("Ungrounded synthesis response");
+      throw new Error("Citation section_title mismatch");
     }
 
     if (citation.quote !== undefined && !chunk.text_content.includes(citation.quote)) {
-      throw new Error("Ungrounded synthesis response");
+      throw new Error("Citation quote mismatch");
     }
   }
 
@@ -75,7 +75,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ...result, matches: undefined });
   } catch (err) {
     const msg = (err as Error).message;
-    if (msg === "Ungrounded synthesis response" || msg === "Invalid clarification structure") {
+    const knownGuards = [
+      "Ungrounded synthesis response",
+      "Citation chunk_index not found",
+      "Citation section_number mismatch",
+      "Citation section_title mismatch",
+      "Citation quote mismatch",
+      "Invalid clarification structure",
+    ];
+    if (knownGuards.includes(msg)) {
       return NextResponse.json(
         { error: "Unable to generate contract-grounded answer.", debug: msg },
         { status: 500 }
