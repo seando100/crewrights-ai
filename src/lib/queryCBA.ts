@@ -29,7 +29,7 @@ export async function queryCBA(
     query_embedding: embedding,
     filter_airline: airline,
     filter_contract_version: contractVersion,
-    match_count: 5,
+    match_count: 8,
   });
 
   if (error) {
