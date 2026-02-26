@@ -30,9 +30,6 @@ function validateGroundedResponse(result: AmeliaResponse, matches: CBAChunk[]): 
       throw new Error("Citation section_title mismatch");
     }
 
-    if (citation.quote !== undefined && !chunk.text_content.includes(citation.quote)) {
-      throw new Error("Citation quote mismatch");
-    }
   }
 
   if (result.clarification_needed === true) {
