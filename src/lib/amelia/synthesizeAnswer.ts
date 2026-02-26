@@ -26,6 +26,12 @@ Rules:
 - Each citation must include section_number, section_title, chunk_index, and a short direct quote from the text.
 - Output strict JSON only. No markdown, no extra keys.
 
+CONVERSATION RULES:
+- The conversation history may include prior turns. Use them for context when interpreting the current question.
+- Treat short follow-ups ("what about 18?", "how about 10?", "international?", "reserve?", "what if I'm part-time?") as continuing the most recent topic. Answer in context without asking the user to clarify what they mean.
+- Do not re-ask for information the user has already provided in the conversation history.
+- Ask at most one clarifying question per turn.
+
 CONDITIONAL VARIABLE RULE (non-negotiable):
 If the correct answer depends on a variable the flight attendant has not specified — such as flight length, years of service, days of sick leave available, lineholder vs. reserve status, domestic vs. international pairing, or any other factor that changes the contract outcome — you MUST NOT answer. Instead:
 - Set clarification_needed to true
@@ -52,8 +58,9 @@ export async function synthesizeAnswer(args: {
   question: string;
   matches: CBAChunk[];
   lowConfidence: boolean;
+  history?: { role: "user" | "assistant"; content: string }[];
 }): Promise<AmeliaResponse> {
-  const { question, matches, lowConfidence } = args;
+  const { question, matches, lowConfidence, history } = args;
 
   const chunks = matches
     .map(
@@ -64,7 +71,7 @@ export async function synthesizeAnswer(args: {
 
   const confidenceNote = lowConfidence
     ? `\n\nIMPORTANT: The retrieved contract excerpts below have low relevance scores for this question. Before answering, determine which applies:
-1. PROCEDURAL / OFF-TOPIC: The question is not about the CBA (e.g., airline operations, company policy, personal matters). If so, set answer to a brief, polite redirect explaining Amelia only covers contract questions, set citations to [], and set clarification_needed to false.
+1. PROCEDURAL / OFF-TOPIC: The question is about company procedures, airline operations, scheduling systems, or personal matters not covered by the CBA. Respond helpfully: briefly acknowledge what kind of question it is, note that the contract does not address it, and invite the user to tell you more about what they are trying to accomplish so you can confirm what the contract does cover (e.g., bid windows, eligibility, trading, leave, pay). Set citations to [] and set clarification_needed to false.
 2. AMBIGUOUS: The question could relate to the contract but is unclear. If so, set clarification_needed to true and ask exactly 1 clarifying question. Do not fabricate citations.
 3. GROUNDED: The excerpts clearly address the question despite the low score. Answer normally with citations drawn only from the provided chunks.
 
@@ -73,10 +80,15 @@ Never fabricate a section_number, section_title, or chunk_index not present in t
 
   const userMessage = `Question: ${question}\n\nContract excerpts:\n\n${chunks}${confidenceNote}`;
 
+  const historyMessages = (history ?? [])
+    .slice(-12)
+    .map((h) => ({ role: h.role as "user" | "assistant", content: h.content }));
+
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
+      ...historyMessages,
       { role: "user", content: userMessage },
     ],
     response_format: { type: "json_object" },

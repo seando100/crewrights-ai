@@ -53,11 +53,14 @@ function validateGroundedResponse(result: AmeliaResponse, matches: CBAChunk[]): 
 
 export async function POST(req: NextRequest) {
   try {
-    const { question } = await req.json();
+    const { question, history } = await req.json();
 
     if (!question || typeof question !== "string") {
       return NextResponse.json({ error: "question is required" }, { status: 400 });
     }
+
+    const safeHistory: { role: "user" | "assistant"; content: string }[] =
+      Array.isArray(history) ? history : [];
 
     const matches = await queryCBA(
       question,
@@ -72,6 +75,7 @@ export async function POST(req: NextRequest) {
       question,
       matches,
       lowConfidence,
+      history: safeHistory,
     });
     validateGroundedResponse(result, matches);
     return NextResponse.json({ ...result, matches: undefined });
