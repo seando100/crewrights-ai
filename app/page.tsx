@@ -2,6 +2,16 @@
 
 import { useRef, useState } from "react";
 
+function AmeliaAvatar() {
+  return (
+    <div className="h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-full bg-indigo-600">
+      <svg viewBox="0 0 24 24" fill="white" className="h-5 w-5" aria-hidden="true">
+        <path d="M12 12c2.7 0 4.8-2.15 4.8-4.8S14.7 2.4 12 2.4 7.2 4.55 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.62-9.6 4.8v1.2c0 .66.54 1.2 1.2 1.2h16.8c.66 0 1.2-.54 1.2-1.2v-1.2c0-3.18-6.4-4.8-9.6-4.8z" />
+      </svg>
+    </div>
+  );
+}
+
 type Citation = {
   section_number: string | null;
   section_title: string | null;
@@ -21,7 +31,6 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
-  const [expandedIdx, setExpandedIdx] = useState<Set<number>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
 
   function scrollToBottom() {
@@ -30,16 +39,7 @@ export default function Home() {
 
   function handleNewChat() {
     setMessages([]);
-    setExpandedIdx(new Set());
     setQuestion("");
-  }
-
-  function toggleExpand(idx: number) {
-    setExpandedIdx((prev) => {
-      const next = new Set(prev);
-      next.has(idx) ? next.delete(idx) : next.add(idx);
-      return next;
-    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -105,12 +105,10 @@ export default function Home() {
       {/* Header */}
       <header className="flex-none flex items-center justify-between px-4 py-3 border-b border-white/10">
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 flex items-center justify-center rounded-xl bg-white text-black font-bold text-sm">
-            A
-          </div>
+          <AmeliaAvatar />
           <div>
             <h1 className="text-base font-semibold tracking-tight">Amelia</h1>
-            <p className="text-xs text-zinc-400">Contract Interpreter</p>
+            <p className="text-xs text-zinc-400">Flight Attendant Union Contract Advisor</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -131,9 +129,14 @@ export default function Home() {
         <div className="mx-auto max-w-xl px-4 min-h-full flex flex-col">
           {messages.length === 0 ? (
             <div className="flex-1 flex items-center justify-center">
-              <p className="text-zinc-600 text-sm text-center">
-                Ask anything about your contract.
-              </p>
+              <div className="text-center space-y-1.5">
+                <p className="text-zinc-500 text-sm">
+                  I&rsquo;m here to help interpret your union contract.
+                </p>
+                <p className="text-zinc-600 text-xs">
+                  Ask about rest, vacation, pay rules, or other provisions.
+                </p>
+              </div>
             </div>
           ) : (
             <div className="py-4 space-y-4">
@@ -161,44 +164,30 @@ export default function Home() {
                       >
                         {msg.clarification_needed && (
                           <span className="block text-amber-400/60 text-xs mb-1.5">
-                            One question first —
+                            To give you the correct rule —
                           </span>
                         )}
                         {msg.content}
                       </div>
 
-                      {/* Expandable contract text */}
+                      {/* Contract citations — always visible */}
                       {msg.citations && msg.citations.length > 0 && (
-                        <div className="ml-1">
-                          <button
-                            onClick={() => toggleExpand(idx)}
-                            className="flex items-center gap-1.5 text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
-                          >
-                            <span className="text-[10px]">
-                              {expandedIdx.has(idx) ? "▲" : "▼"}
-                            </span>
-                            Contract text
-                          </button>
-                          {expandedIdx.has(idx) && (
-                            <div className="mt-2 space-y-2">
-                              {msg.citations.map((c, ci) => (
-                                <div
-                                  key={ci}
-                                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5"
-                                >
-                                  <p className="text-xs font-medium text-zinc-400 mb-1">
-                                    Section {c.section_number} —{" "}
-                                    {c.section_title}
-                                  </p>
-                                  {c.quote && (
-                                    <p className="text-xs text-zinc-500 italic leading-5">
-                                      &ldquo;{c.quote}&rdquo;
-                                    </p>
-                                  )}
-                                </div>
-                              ))}
+                        <div className="space-y-2">
+                          {msg.citations.map((c, ci) => (
+                            <div
+                              key={ci}
+                              className="rounded-xl border border-white/10 bg-white/5 px-4 py-3"
+                            >
+                              <p className="text-xs font-semibold text-zinc-300 mb-2 uppercase tracking-wide">
+                                Section {c.section_number} — {c.section_title}
+                              </p>
+                              {c.quote && (
+                                <p className="text-xs text-zinc-400 leading-5 border-l-2 border-white/20 pl-3">
+                                  {c.quote}
+                                </p>
+                              )}
                             </div>
-                          )}
+                          ))}
                         </div>
                       )}
                     </div>
