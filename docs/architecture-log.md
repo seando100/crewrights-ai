@@ -179,6 +179,183 @@ import { queryCBA } from "../../../src/lib/queryCBA";
 
 ---
 
+## Session: 2026-02-26 (continued) — Pipeline Overhaul
+
+### ADR-010 — Remove Hard Similarity Gate; Add `lowConfidence` Flag
+
+**Decision:** Removed the hard `0.55` similarity threshold that returned a 400 error. Replaced with a `lowConfidence: boolean` flag passed to `synthesizeAnswer`.
+
+**Rationale:** The hard gate produced false negatives — legitimate contract questions with borderline embeddings were rejected outright. The LLM is better placed to determine whether the retrieved chunks are relevant. Under low confidence, `synthesizeAnswer` classifies the query as PROCEDURAL/OFF-TOPIC, AMBIGUOUS, or GROUNDED and responds accordingly.
+
+**Constraint:** Empty `citations` array is now allowed (not a validation error) to support off-topic redirects.
+
+---
+
+### ADR-011 — Conditional Variable Clarification with Structural Guard
+
+**Decision:** When the correct answer depends on a variable the user has not provided (e.g., domestic vs. international, lineholder vs. reserve), the model must set `clarification_needed: true`, provide exactly one `clarifying_question`, and omit `answer` and `citations` entirely.
+
+**Enforcement:** `validateGroundedResponse()` in `route.ts` branches on `clarification_needed` first:
+- Clarification path: throws `"Clarification answer contamination"` if `answer` is present; throws `"Clarification citations contamination"` if `citations` is non-empty.
+- Answer path: requires non-empty `answer`, valid `citations` array, each citation grounded to a real chunk by `chunk_index` + `section_number` + `section_title`.
+
+**`AmeliaResponse` shape change:** `answer` and `citations` made optional (`answer?: string`, `citations?: Citation[]`) to support the clarification path.
+
+---
+
+### ADR-012 — Conversation Memory (Chat History)
+
+**Decision:** The UI maintains a full `messages: Message[]` state. Every submission sends the complete prior history to `POST /api/query` as a `history` array of `{ role, content }` pairs. `synthesizeAnswer` injects the last 12 turns as OpenAI message objects between the system prompt and the current user message.
+
+**Follow-up retrieval anchor:** Short follow-ups (≤ 3 words) produce poor vector retrieval because the query carries no semantic content. `buildRetrievalQuery()` in `route.ts` detects this and substitutes the last substantial user message from history (> 3 words) as the retrieval query. This ensures "33" retrieves rest-period chunks, not nothing.
+
+```typescript
+function buildRetrievalQuery(question, history): string {
+  const words = question.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 3 && history.length > 0) {
+    const lastSubstantial = [...history].reverse()
+      .find(h => h.role === "user" && h.content.trim().split(/\s+/).length > 3);
+    if (lastSubstantial) return lastSubstantial.content;
+  }
+  return question;
+}
+```
+
+**`isFollowUp` bypass:** If `history.length > 0`, the vague intent gate is skipped so short follow-ups are not rejected as incomplete questions.
+
+---
+
+### ADR-013 — Advisor Persona and UI Polish
+
+**Decision:** Complete `SYSTEM_PROMPT` rewrite establishing Amelia as a **Union Contract Advisor** (not a chatbot or search tool).
+
+**Prompt rules added:**
+- CONDITIONAL VARIABLE RULE (non-negotiable): ask exactly one clarifying question when a branching variable is missing
+- NOT COVERED RULE: state clearly what the contract does not address; no defensive hedging
+- DATE AND NUMBER PRECISION RULE: only state values explicitly written in the cited clause
+- CONVERSATION RULES: interpret short follow-ups in the context of the most recent topic; do not re-ask for known variables
+
+**UI changes:**
+- `AmeliaAvatar` SVG component (indigo circle, person silhouette)
+- Citations always visible (removed expandable toggle — extra friction, no benefit)
+- Citation card: `SECTION N — TITLE` header + left-border quote block
+- Clarification bubble: amber border + `"To give you the correct rule —"` prefix in small text
+- Empty state: three-line intro matching Amelia's advisor voice
+- "New chat" button resets message history
+
+---
+
+### ADR-014 — Intent Pre-Classification Layer (Zero LLM Cost)
+
+**File:** `src/lib/amelia/classifyIntent.ts`
+
+**Decision:** Add a rule-based intent classifier that runs before any LLM or retrieval call, catching inputs that should never reach the pipeline.
+
+**Intent types:** `"greeting" | "thanks" | "vague" | "contract"`
+
+**Classification logic:**
+- Exact-match sets: `GREETINGS` and `THANKS` (~15 phrases each)
+- Greeting prefix detection: `GREETING_STARTERS` set — if the first word is a greeting starter, the input is ≤ 5 words, and no contract keyword appears, classify as `"greeting"`
+- Vague gate: empty input or fewer than 3 words with no contract keyword → `"vague"`
+- `CONTRACT_KEYWORDS`: 50+ terms covering all major CBA topics (rest, pay, reserve, deadhead, pairing, seniority, etc.)
+- Everything else → `"contract"`
+
+**Bug fixed:** "Hello there" was classified as `"vague"` because the `GREETINGS` set used exact matching and `"hello there"` ≠ `"hello"`. Fixed by adding prefix-match via `GREETING_STARTERS`.
+
+**Route early returns:**
+- `"greeting"` → canned Amelia intro response, no retrieval
+- `"thanks"` → canned acknowledgement response, no retrieval
+- `"vague"` (and not a follow-up) → prompt for more detail, no retrieval
+
+---
+
+### ADR-015 — Contract Reasoning Layer: Classify → Evaluate → Explain
+
+**Decision:** For questions with computable structure (threshold rules, tiered entitlements), replace full synthesis with a focused three-step pipeline that determines the applicable clause before generating any explanation.
+
+**New files:**
+- `src/lib/amelia/classifyQuestion.ts`
+- `src/lib/amelia/evaluateRule.ts`
+- `src/lib/amelia/explainClause.ts`
+
+**`classifyQuestion.ts`**
+- Lightweight `gpt-4o-mini` call (max 160 tokens, `response_format: json_object`)
+- Returns: `QuestionType` (THRESHOLD_RULE | ENTITLEMENT_BY_TIER | PROCEDURAL_POLICY | PURE_LOOKUP | AMBIGUOUS), `topic_query` (question restated with no numbers — improves chunk retrieval), and extracted `variables`:
+```typescript
+type QuestionVariables = {
+  duration_hours: number | null;
+  service_years: number | null;
+  flight_type: "domestic" | "international" | null;
+  status: "lineholder" | "reserve" | null;
+  days: number | null;
+};
+```
+
+**`evaluateRule.ts`**
+- Receives only known (non-null) variables — nulls were previously passed in full JSON, causing the model to hallucinate them as missing required inputs
+- Prompt CRITICAL CONSTRAINTS: only ask for a variable if it is **explicitly** required by the contract language in the retrieved chunks; do not invent requirements
+- Returns: `{ resolved: true; chunk_index: number }` OR `{ resolved: false; clarifying_question: string }`
+
+**`explainClause.ts`**
+- Receives only the pre-selected chunk; enforces exact `chunk_index`/`section_number`/`section_title` passthrough
+- Exactly one citation, full clause text as quote — no truncation
+- Max 600 tokens
+
+**Route orchestration (`app/api/query/route.ts`):**
+```
+classifyIntent → early return (greeting/thanks/vague)
+    ↓
+Promise.all([classifyQuestion, queryCBA(retrievalQuery)])
+    ↓ (for THRESHOLD_RULE / ENTITLEMENT_BY_TIER with confidence ≥ 0.55)
+re-retrieve with topic_query (numbers stripped)
+    ↓
+evaluateRule → resolved? → explainClause → return
+                         → unresolved? → return clarifying_question
+    ↓ (fallback or other types)
+synthesizeAnswer (full synthesis)
+```
+
+**`topic_query` re-retrieval rationale:** A question like "what is the rest after a 12-hour flight?" embeds well on the number `12`. Re-retrieving with `"rest period after long flight"` finds rule clusters across threshold brackets rather than the single chunk closest to that number.
+
+---
+
+### ADR-016 — Section Context Expansion
+
+**File:** `src/lib/queryCBA.ts`
+
+**Decision:** After the primary `match_cba_chunks` vector search returns 8 chunks, expand the result set with neighboring chunks from the same section so the model can see the full rule structure (adjacent thresholds, exception clauses, definitions).
+
+**Implementation:**
+1. Take the top 1–2 vector matches; record their `section_number` and `chunk_index` as anchors
+2. For each unique section, query `cba_chunks` directly (no embedding — plain Supabase select filtered by `airline`, `contract_version`, and `metadata->>section_number`)
+3. In JavaScript, filter to `chunk_index ∈ [anchor - 3, anchor + 6]`, sort ascending, cap at 20
+4. Merge: primary matches first (similarity order preserved), then context chunks de-duped by `chunk_index`
+5. Context chunks carry `similarity: 0` so primary vector results still dominate ordering
+
+**Error handling:** If the section context fetch fails for any reason, fall back to primary matches unchanged.
+
+**No DB changes required.** The existing `cba_chunks` table supports direct filtering by `metadata->>section_number`.
+
+---
+
+### ADR-017 — Tone: Remove Hedging Language from NOT COVERED RULE
+
+**Decision:** Replace soft "the excerpts do not specify" language with a direct, confident statement.
+
+**Before:**
+> "The contract sections provided do not specify the number of family travel benefits. That is typically governed by company travel policy rather than the union agreement."
+
+**After:**
+> "This topic is not addressed in the 2024 CBA." + one sentence on company policy if applicable + offer of a related contract topic.
+
+**Applied in two places:**
+1. `SYSTEM_PROMPT` — NOT COVERED RULE block
+2. `confidenceNote` — PROCEDURAL/OFF-TOPIC branch of the low-confidence instruction
+
+**Rationale:** The previous phrasing hedged with "provided" and "typically," which read as uncertainty about the contract rather than authority. The direct form signals that Amelia has checked and the answer is definitively not in scope.
+
+---
+
 ## Key File Map
 
 | File | Purpose |
@@ -187,11 +364,16 @@ import { queryCBA } from "../../../src/lib/queryCBA";
 | `scripts/truncate-cba.ts` | Wipe `cba_chunks` table for fresh ingest |
 | `scripts/verify-ingest.ts` | Row count + first 5 rows sanity check |
 | `scripts/check-metadata.ts` | Inspect `metadata` JSON per row |
-| `src/lib/queryCBA.ts` | Embed question → Supabase RPC → ranked chunks |
-| `src/lib/amelia/synthesizeAnswer.ts` | LLM synthesis → structured `AmeliaResponse` |
+| `src/lib/queryCBA.ts` | Embed question → Supabase RPC → ranked chunks + section context expansion |
+| `src/lib/amelia/classifyIntent.ts` | Rule-based intent pre-classifier (zero LLM cost) |
+| `src/lib/amelia/classifyQuestion.ts` | LLM question type + variable extraction + topic_query |
+| `src/lib/amelia/evaluateRule.ts` | Determines applicable chunk or asks one clarifying question |
+| `src/lib/amelia/explainClause.ts` | Narrow clause explanation for pre-selected chunk |
+| `src/lib/amelia/synthesizeAnswer.ts` | Full LLM synthesis fallback → structured `AmeliaResponse` |
 | `src/lib/supabaseServer.ts` | Supabase client singleton |
 | `src/lib/openai.ts` | OpenAI client singleton |
 | `app/api/query/route.ts` | POST `/api/query` — full pipeline orchestration |
+| `app/page.tsx` | Chat UI — messages state, history, citation cards, clarification bubbles |
 | `data/2024-CBA_121724.pdf` | Source document (APFA/American Airlines 2024 CBA) |
 | `.env.local` | `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `OPENAI_API_KEY` |
 
@@ -202,7 +384,8 @@ import { queryCBA } from "../../../src/lib/queryCBA";
 - **Runtime:** Node.js 24 / Next.js 16.1.6 (App Router, Turbopack)
 - **Language:** TypeScript, executed via `tsx` for scripts
 - **Platform:** Windows 11, bash shell
+- **Deployment:** Vercel (auto-deploys on push to `main`)
 - **Vector DB:** Supabase (pgvector, `match_cba_chunks` RPC)
 - **Embeddings:** OpenAI `text-embedding-3-small` (1536 dims)
-- **Synthesis LLM:** OpenAI `gpt-4o-mini`
+- **LLM:** OpenAI `gpt-4o-mini` — all synthesis, classification, evaluation, and explanation calls
 - **Chunks in DB:** 299 (from 39 sections, 2 TOC chunks skipped)
