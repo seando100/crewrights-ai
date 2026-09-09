@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Source contract documents are third-party material. They stay local.
+data/
+*.pdf
