@@ -69,8 +69,10 @@ each with the alternatives considered and why they lost. A sample:
 
 ## Stack
 
-Next.js 15 with the App Router, TypeScript, Supabase with pgvector for retrieval, and an
-Anthropic model for classification and synthesis.
+Next.js 15 with the App Router, TypeScript, and Supabase with pgvector for retrieval.
+Embeddings are `text-embedding-3-small`; classification and answer synthesis run on
+`gpt-4o-mini`, which is deliberate. The reasoning here is constrained by structure and by
+rules about what may be stated, not by reaching for the largest available model.
 
 ## What is not in this repository
 
