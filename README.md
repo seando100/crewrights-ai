@@ -8,6 +8,12 @@ conditions stated somewhere else. The people who need them most are reading them
 in an airport, about to make a decision. Search is not the problem. **Being confidently wrong
 about a number is the problem.**
 
+## How it got this shape
+
+[`docs/process-map.md`](docs/process-map.md) covers what people actually do when they need an
+answer from a contract, why that process fails, and why the constraints below are the shape of
+the answer rather than a list of features.
+
 ## The constraints that shaped it
 
 Most of the engineering here exists to stop the model doing things a language model does
