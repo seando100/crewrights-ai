@@ -81,7 +81,7 @@ here. `data/` is ignored and the corpus lives in the database, not in git.
 
 ```bash
 npm install
-cp .env.example .env.local     # Supabase and Anthropic credentials
+cp .env.example .env.local     # Supabase and OpenAI credentials
 npm run ingest                 # point at your own source document
 npm run dev
 ```
